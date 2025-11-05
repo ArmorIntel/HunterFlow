@@ -1,0 +1,593 @@
+{
+  "name": "Threat Intelligence Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "e83ab109-608a-49ad-8b1b-48ffcb41dfbd",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -448,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "mispUrl",
+              "value": "<__PLACEHOLDER_VALUE__MISP API endpoint URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "mispApiKey",
+              "value": "<__PLACEHOLDER_VALUE__MISP API key__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "otxApiKey",
+              "value": "<__PLACEHOLDER_VALUE__AlienVault OTX API key__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "rssFeedUrl",
+              "value": "<__PLACEHOLDER_VALUE__RSS threat feed URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "twitterBearerToken",
+              "value": "<__PLACEHOLDER_VALUE__Twitter API bearer token__>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "160a942b-0443-4902-bdb1-ce5ff225b3dc",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.mispUrl }}/events/restSearch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.mispApiKey }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4f689a35-c5a5-4daa-b94a-a639dd905375",
+      "name": "Fetch MISP IOCs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://otx.alienvault.com/api/v1/pulses/subscribed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-OTX-API-KEY",
+              "value": "={{ $('Workflow Configuration').first().json.otxApiKey }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d55e541f-0815-49ba-b84e-5d47d1478574",
+      "name": "Fetch AlienVault OTX IOCs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://urlhaus.abuse.ch/downloads/json_recent/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b8863cfc-6e4b-468c-a27f-471d507080d7",
+      "name": "Fetch Abuse.ch Threat Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.rssFeedUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/xml"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "90898fd0-9771-4ef8-a39c-94d71bddb287",
+      "name": "Fetch RSS Threat Feeds",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.twitter.com/2/tweets/search/recent?query=%23threatintel%20OR%20%23ioc%20OR%20%23cyberthreat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Workflow Configuration').first().json.twitterBearerToken }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d6da1a16-987d-4199-8f80-d0d96a9b9fcf",
+      "name": "Fetch Twitter Threat Intel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse MISP event data and extract IOCs\nconst items = $input.all();\nconst iocs = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Handle MISP event structure\n  const events = data.Event ? [data.Event] : (data.response?.Event ? [data.response.Event] : data);\n  \n  for (const event of events) {\n    if (!event) continue;\n    \n    const eventInfo = event.info || 'Unknown Event';\n    const threatLevel = event.threat_level_id || 'Unknown';\n    const eventTags = event.Tag ? event.Tag.map(t => t.name) : [];\n    const eventId = event.id || 'Unknown';\n    const eventDate = event.date || new Date().toISOString().split('T')[0];\n    \n    // Extract attributes (IOCs)\n    const attributes = event.Attribute || [];\n    \n    for (const attr of attributes) {\n      if (!attr.value) continue;\n      \n      const iocType = attr.type || 'unknown';\n      const iocValue = attr.value;\n      const category = attr.category || 'Unknown';\n      const comment = attr.comment || '';\n      const toIds = attr.to_ids || false;\n      \n      // Classify IOC type\n      let normalizedType = 'unknown';\n      if (iocType.includes('ip-') || iocType === 'ip') {\n        normalizedType = 'ip';\n      } else if (iocType.includes('domain') || iocType === 'hostname') {\n        normalizedType = 'domain';\n      } else if (iocType.includes('url')) {\n        normalizedType = 'url';\n      } else if (iocType.includes('md5') || iocType.includes('sha1') || iocType.includes('sha256') || iocType.includes('hash')) {\n        normalizedType = 'hash';\n      } else if (iocType.includes('email')) {\n        normalizedType = 'email';\n      }\n      \n      iocs.push({\n        json: {\n          source: 'MISP',\n          ioc_type: normalizedType,\n          ioc_value: iocValue,\n          original_type: iocType,\n          event_info: eventInfo,\n          event_id: eventId,\n          event_date: eventDate,\n          threat_level: threatLevel,\n          category: category,\n          comment: comment,\n          to_ids: toIds,\n          tags: eventTags,\n          timestamp: new Date().toISOString()\n        }\n      });\n    }\n  }\n}\n\nreturn iocs.length > 0 ? iocs : [{ json: { message: 'No IOCs extracted from MISP data' } }];"
+      },
+      "id": "5be22ec3-0597-4518-9588-83652eb97afb",
+      "name": "Parse MISP Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AlienVault OTX pulse data and extract indicators\nconst items = $input.all();\nconst parsedData = [];\n\nfor (const item of items) {\n  const pulses = item.json.results || [];\n  \n  for (const pulse of pulses) {\n    const pulseName = pulse.name || 'Unknown Pulse';\n    const description = pulse.description || '';\n    const tags = pulse.tags || [];\n    const tlp = pulse.tlp || 'white';\n    const indicators = pulse.indicators || [];\n    \n    for (const indicator of indicators) {\n      parsedData.push({\n        json: {\n          source: 'AlienVault OTX',\n          pulse_name: pulseName,\n          description: description,\n          tags: tags,\n          tlp: tlp,\n          indicator_type: indicator.type,\n          indicator_value: indicator.indicator,\n          created: indicator.created || pulse.created,\n          modified: pulse.modified,\n          pulse_id: pulse.id,\n          author: pulse.author_name || pulse.author?.username || 'Unknown'\n        }\n      });\n    }\n  }\n}\n\nreturn parsedData;"
+      },
+      "id": "116e948b-fa8a-445b-9504-719bf3906d1c",
+      "name": "Parse OTX Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Abuse.ch URLhaus data\n// Extract malicious URLs with threat type, tags, and reporter information\n\nconst items = $input.all();\nconst parsedData = [];\n\nfor (const item of items) {\n  try {\n    const data = item.json;\n    \n    // Handle different response formats from Abuse.ch\n    let urls = [];\n    \n    // If data is an array of URLs\n    if (Array.isArray(data)) {\n      urls = data;\n    }\n    // If data has a 'data' property with URLs\n    else if (data.data && Array.isArray(data.data)) {\n      urls = data.data;\n    }\n    // If data has 'urls' property\n    else if (data.urls && Array.isArray(data.urls)) {\n      urls = data.urls;\n    }\n    // Single URL object\n    else if (data.url) {\n      urls = [data];\n    }\n    \n    // Parse each URL entry\n    for (const urlEntry of urls) {\n      const parsed = {\n        type: 'url',\n        value: urlEntry.url || urlEntry.url_value || '',\n        source: 'abuse.ch',\n        threat_type: urlEntry.threat || urlEntry.threat_type || 'malware',\n        tags: [],\n        reporter: urlEntry.reporter || 'unknown',\n        date_added: urlEntry.date_added || urlEntry.dateadded || new Date().toISOString(),\n        url_status: urlEntry.url_status || urlEntry.status || 'online',\n        malware_family: urlEntry.malware || urlEntry.malware_family || '',\n        reference: urlEntry.reference || urlEntry.urlhaus_reference || '',\n        raw_data: urlEntry\n      };\n      \n      // Extract tags\n      if (urlEntry.tags) {\n        if (Array.isArray(urlEntry.tags)) {\n          parsed.tags = urlEntry.tags;\n        } else if (typeof urlEntry.tags === 'string') {\n          parsed.tags = urlEntry.tags.split(',').map(t => t.trim());\n        }\n      }\n      \n      // Add malware family to tags if available\n      if (parsed.malware_family) {\n        parsed.tags.push(parsed.malware_family);\n      }\n      \n      // Only add if URL value exists\n      if (parsed.value) {\n        parsedData.push({ json: parsed });\n      }\n    }\n  } catch (error) {\n    console.error('Error parsing Abuse.ch data:', error);\n    // Continue processing other items\n  }\n}\n\n// Return parsed data or empty array if no data\nreturn parsedData.length > 0 ? parsedData : [{ json: { message: 'No URLs found in Abuse.ch data' } }];"
+      },
+      "id": "88ac6425-8e19-48a9-9099-b763e68df974",
+      "name": "Parse Abuse.ch Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse RSS feed XML data and extract threat indicators\nconst items = $input.all();\nconst parsedItems = [];\n\nfor (const item of items) {\n  try {\n    const rssData = item.json;\n    \n    // Check if we have RSS feed items\n    if (rssData.rss && rssData.rss.channel && rssData.rss.channel.item) {\n      const feedItems = Array.isArray(rssData.rss.channel.item) \n        ? rssData.rss.channel.item \n        : [rssData.rss.channel.item];\n      \n      for (const feedItem of feedItems) {\n        // Extract threat indicators from each RSS item\n        const indicator = {\n          title: feedItem.title || '',\n          description: feedItem.description || '',\n          link: feedItem.link || '',\n          pubDate: feedItem.pubDate || feedItem.published || '',\n          source: 'RSS Feed',\n          category: feedItem.category || [],\n          guid: feedItem.guid || feedItem.id || '',\n          // Extract any IOCs from description/title using regex\n          extractedIOCs: extractIOCs(feedItem.title + ' ' + feedItem.description)\n        };\n        \n        parsedItems.push({ json: indicator });\n      }\n    } else {\n      // Handle other RSS formats (Atom, etc.)\n      if (rssData.feed && rssData.feed.entry) {\n        const entries = Array.isArray(rssData.feed.entry) \n          ? rssData.feed.entry \n          : [rssData.feed.entry];\n        \n        for (const entry of entries) {\n          const indicator = {\n            title: entry.title || '',\n            description: entry.summary || entry.content || '',\n            link: entry.link ? (entry.link.href || entry.link) : '',\n            pubDate: entry.updated || entry.published || '',\n            source: 'RSS Feed',\n            category: entry.category || [],\n            guid: entry.id || '',\n            extractedIOCs: extractIOCs((entry.title || '') + ' ' + (entry.summary || entry.content || ''))\n          };\n          \n          parsedItems.push({ json: indicator });\n        }\n      }\n    }\n  } catch (error) {\n    console.error('Error parsing RSS item:', error);\n  }\n}\n\n// Helper function to extract IOCs from text\nfunction extractIOCs(text) {\n  if (!text) return {};\n  \n  const iocs = {\n    ipv4: [],\n    ipv6: [],\n    domains: [],\n    urls: [],\n    hashes: {\n      md5: [],\n      sha1: [],\n      sha256: []\n    },\n    cve: []\n  };\n  \n  // IPv4 pattern\n  const ipv4Regex = /\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b/g;\n  const ipv4Matches = text.match(ipv4Regex);\n  if (ipv4Matches) iocs.ipv4 = [...new Set(ipv4Matches)];\n  \n  // Domain pattern\n  const domainRegex = /\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}\\b/gi;\n  const domainMatches = text.match(domainRegex);\n  if (domainMatches) iocs.domains = [...new Set(domainMatches)];\n  \n  // URL pattern\n  const urlRegex = /https?:\\/\\/[^\\s<>\"]+/gi;\n  const urlMatches = text.match(urlRegex);\n  if (urlMatches) iocs.urls = [...new Set(urlMatches)];\n  \n  // MD5 pattern\n  const md5Regex = /\\b[a-f0-9]{32}\\b/gi;\n  const md5Matches = text.match(md5Regex);\n  if (md5Matches) iocs.hashes.md5 = [...new Set(md5Matches)];\n  \n  // SHA1 pattern\n  const sha1Regex = /\\b[a-f0-9]{40}\\b/gi;\n  const sha1Matches = text.match(sha1Regex);\n  if (sha1Matches) iocs.hashes.sha1 = [...new Set(sha1Matches)];\n  \n  // SHA256 pattern\n  const sha256Regex = /\\b[a-f0-9]{64}\\b/gi;\n  const sha256Matches = text.match(sha256Regex);\n  if (sha256Matches) iocs.hashes.sha256 = [...new Set(sha256Matches)];\n  \n  // CVE pattern\n  const cveRegex = /CVE-\\d{4}-\\d{4,}/gi;\n  const cveMatches = text.match(cveRegex);\n  if (cveMatches) iocs.cve = [...new Set(cveMatches)];\n  \n  return iocs;\n}\n\nreturn parsedItems;"
+      },
+      "id": "88b4c8e1-b207-49c9-aefa-2acceb4c45a5",
+      "name": "Parse RSS Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Twitter API response and extract IOCs from tweets\nconst items = $input.all();\nconst iocs = [];\n\n// Regex patterns for IOC extraction\nconst patterns = {\n  ipv4: /\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b/g,\n  domain: /\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}\\b/gi,\n  md5: /\\b[a-f0-9]{32}\\b/gi,\n  sha1: /\\b[a-f0-9]{40}\\b/gi,\n  sha256: /\\b[a-f0-9]{64}\\b/gi,\n  cve: /CVE-\\d{4}-\\d{4,7}/gi,\n  url: /https?:\\/\\/[^\\s<>\"{}|\\\\^`\\[\\]]+/gi\n};\n\nfor (const item of items) {\n  const tweets = item.json.data || [];\n  const includes = item.json.includes || {};\n  \n  for (const tweet of tweets) {\n    const text = tweet.text || '';\n    const tweetId = tweet.id;\n    const authorId = tweet.author_id;\n    const createdAt = tweet.created_at;\n    \n    // Find author username from includes\n    let username = 'unknown';\n    if (includes.users) {\n      const author = includes.users.find(u => u.id === authorId);\n      if (author) username = author.username;\n    }\n    \n    // Extract IPv4 addresses\n    const ipMatches = text.match(patterns.ipv4) || [];\n    for (const ip of ipMatches) {\n      iocs.push({\n        type: 'ipv4',\n        value: ip,\n        source: 'twitter',\n        tweet_id: tweetId,\n        author: username,\n        tweet_text: text,\n        created_at: createdAt,\n        confidence: 'medium'\n      });\n    }\n    \n    // Extract domains (filter out common non-threat domains)\n    const domainMatches = text.match(patterns.domain) || [];\n    const excludeDomains = ['twitter.com', 't.co', 'bit.ly', 'example.com'];\n    for (const domain of domainMatches) {\n      if (!excludeDomains.some(ex => domain.toLowerCase().includes(ex))) {\n        iocs.push({\n          type: 'domain',\n          value: domain.toLowerCase(),\n          source: 'twitter',\n          tweet_id: tweetId,\n          author: username,\n          tweet_text: text,\n          created_at: createdAt,\n          confidence: 'medium'\n        });\n      }\n    }\n    \n    // Extract MD5 hashes\n    const md5Matches = text.match(patterns.md5) || [];\n    for (const hash of md5Matches) {\n      iocs.push({\n        type: 'md5',\n        value: hash.toLowerCase(),\n        source: 'twitter',\n        tweet_id: tweetId,\n        author: username,\n        tweet_text: text,\n        created_at: createdAt,\n        confidence: 'high'\n      });\n    }\n    \n    // Extract SHA1 hashes\n    const sha1Matches = text.match(patterns.sha1) || [];\n    for (const hash of sha1Matches) {\n      iocs.push({\n        type: 'sha1',\n        value: hash.toLowerCase(),\n        source: 'twitter',\n        tweet_id: tweetId,\n        author: username,\n        tweet_text: text,\n        created_at: createdAt,\n        confidence: 'high'\n      });\n    }\n    \n    // Extract SHA256 hashes\n    const sha256Matches = text.match(patterns.sha256) || [];\n    for (const hash of sha256Matches) {\n      iocs.push({\n        type: 'sha256',\n        value: hash.toLowerCase(),\n        source: 'twitter',\n        tweet_id: tweetId,\n        author: username,\n        tweet_text: text,\n        created_at: createdAt,\n        confidence: 'high'\n      });\n    }\n    \n    // Extract CVEs\n    const cveMatches = text.match(patterns.cve) || [];\n    for (const cve of cveMatches) {\n      iocs.push({\n        type: 'cve',\n        value: cve.toUpperCase(),\n        source: 'twitter',\n        tweet_id: tweetId,\n        author: username,\n        tweet_text: text,\n        created_at: createdAt,\n        confidence: 'high'\n      });\n    }\n    \n    // Extract URLs (excluding twitter URLs)\n    const urlMatches = text.match(patterns.url) || [];\n    for (const url of urlMatches) {\n      if (!url.includes('twitter.com') && !url.includes('t.co')) {\n        iocs.push({\n          type: 'url',\n          value: url,\n          source: 'twitter',\n          tweet_id: tweetId,\n          author: username,\n          tweet_text: text,\n          created_at: createdAt,\n          confidence: 'medium'\n        });\n      }\n    }\n  }\n}\n\n// Return parsed IOCs\nreturn iocs.map(ioc => ({ json: ioc }));"
+      },
+      "id": "445471de-665e-457c-a790-d15820a848c2",
+      "name": "Parse Twitter Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "id": "ab478de5-e1d2-41bd-a92f-c5d5c9e85c6e",
+      "name": "Merge All IOCs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        448,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize all IOCs to STIX2 format\nconst stixObjects = [];\n\n// Helper function to generate STIX2 ID\nfunction generateStixId(type) {\n  return `${type}--${uuidv4()}`;\n}\n\n// Helper function to generate UUID v4\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\n// Helper function to create STIX2 pattern from IOC\nfunction createStixPattern(iocType, iocValue) {\n  const typeMap = {\n    'ip': 'ipv4-addr:value',\n    'ipv4': 'ipv4-addr:value',\n    'ipv6': 'ipv6-addr:value',\n    'domain': 'domain-name:value',\n    'url': 'url:value',\n    'hash': 'file:hashes.MD5',\n    'md5': 'file:hashes.MD5',\n    'sha1': 'file:hashes.SHA1',\n    'sha256': 'file:hashes.SHA256',\n    'email': 'email-addr:value',\n    'file': 'file:name'\n  };\n  \n  const stixType = typeMap[iocType.toLowerCase()] || 'file:name';\n  return `[${stixType} = '${iocValue}']`;\n}\n\n// Process all items\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Determine IOC type and value\n  const iocType = data.type || data.ioc_type || 'unknown';\n  const iocValue = data.value || data.ioc_value || data.indicator || '';\n  const source = data.source || 'unknown';\n  const confidence = data.confidence || 50;\n  const severity = data.severity || 'medium';\n  const description = data.description || `IOC from ${source}`;\n  \n  // Create STIX2 Indicator object\n  const indicator = {\n    type: 'indicator',\n    spec_version: '2.1',\n    id: generateStixId('indicator'),\n    created: new Date().toISOString(),\n    modified: new Date().toISOString(),\n    name: `${iocType.toUpperCase()}: ${iocValue}`,\n    description: description,\n    pattern: createStixPattern(iocType, iocValue),\n    pattern_type: 'stix',\n    valid_from: data.valid_from || new Date().toISOString(),\n    valid_until: data.valid_until || null,\n    confidence: confidence,\n    labels: data.labels || [iocType, source],\n    external_references: [\n      {\n        source_name: source,\n        description: `IOC collected from ${source}`\n      }\n    ],\n    object_marking_refs: ['marking-definition--613f2e26-407d-48c7-9eca-b8e91df99dc9'] // TLP:WHITE\n  };\n  \n  stixObjects.push({ json: indicator });\n  \n  // If malware name is present, create malware object\n  if (data.malware_name || data.malware) {\n    const malware = {\n      type: 'malware',\n      spec_version: '2.1',\n      id: generateStixId('malware'),\n      created: new Date().toISOString(),\n      modified: new Date().toISOString(),\n      name: data.malware_name || data.malware,\n      description: data.malware_description || `Malware associated with ${iocValue}`,\n      is_family: true,\n      malware_types: data.malware_types || ['unknown'],\n      labels: ['malware']\n    };\n    \n    stixObjects.push({ json: malware });\n  }\n  \n  // If threat actor is present, create threat-actor object\n  if (data.threat_actor || data.actor) {\n    const threatActor = {\n      type: 'threat-actor',\n      spec_version: '2.1',\n      id: generateStixId('threat-actor'),\n      created: new Date().toISOString(),\n      modified: new Date().toISOString(),\n      name: data.threat_actor || data.actor,\n      description: data.actor_description || `Threat actor associated with ${iocValue}`,\n      threat_actor_types: data.actor_types || ['unknown'],\n      sophistication: data.sophistication || 'intermediate',\n      resource_level: data.resource_level || 'individual',\n      primary_motivation: data.motivation || 'unknown',\n      labels: ['threat-actor']\n    };\n    \n    stixObjects.push({ json: threatActor });\n  }\n}\n\nreturn stixObjects;"
+      },
+      "id": "dc09b4e0-604b-480e-87fe-265de23de46f",
+      "name": "Normalize to STIX2 Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// MITRE ATT&CK Classification for Threat Intelligence IOCs\n// Maps IOC types and behaviors to MITRE ATT&CK tactics and techniques\n\nconst item = $input.item.json;\n\n// MITRE ATT&CK mapping based on IOC type and characteristics\nfunction classifyMitreAttack(ioc) {\n  const classifications = [];\n  \n  const iocType = ioc.type?.toLowerCase() || '';\n  const description = (ioc.description || '').toLowerCase();\n  const tags = ioc.tags || [];\n  \n  // IP Address IOCs - typically C2 communication\n  if (iocType.includes('ip') || iocType === 'ipv4-addr' || iocType === 'ipv6-addr') {\n    classifications.push({\n      tactic: 'Command and Control',\n      tactic_id: 'TA0011',\n      technique: 'Application Layer Protocol',\n      technique_id: 'T1071',\n      sub_technique: 'Web Protocols',\n      sub_technique_id: 'T1071.001'\n    });\n  }\n  \n  // Domain IOCs - C2 or phishing\n  if (iocType.includes('domain') || iocType === 'domain-name') {\n    if (description.includes('phish') || tags.some(t => t.toLowerCase().includes('phish'))) {\n      classifications.push({\n        tactic: 'Initial Access',\n        tactic_id: 'TA0001',\n        technique: 'Phishing',\n        technique_id: 'T1566',\n        sub_technique: 'Spearphishing Link',\n        sub_technique_id: 'T1566.002'\n      });\n    } else {\n      classifications.push({\n        tactic: 'Command and Control',\n        tactic_id: 'TA0011',\n        technique: 'Application Layer Protocol',\n        technique_id: 'T1071',\n        sub_technique: 'Web Protocols',\n        sub_technique_id: 'T1071.001'\n      });\n    }\n  }\n  \n  // URL IOCs - phishing or malicious downloads\n  if (iocType.includes('url')) {\n    if (description.includes('phish') || tags.some(t => t.toLowerCase().includes('phish'))) {\n      classifications.push({\n        tactic: 'Initial Access',\n        tactic_id: 'TA0001',\n        technique: 'Phishing',\n        technique_id: 'T1566',\n        sub_technique: 'Spearphishing Link',\n        sub_technique_id: 'T1566.002'\n      });\n    } else {\n      classifications.push({\n        tactic: 'Execution',\n        tactic_id: 'TA0002',\n        technique: 'User Execution',\n        technique_id: 'T1204',\n        sub_technique: 'Malicious Link',\n        sub_technique_id: 'T1204.001'\n      });\n    }\n  }\n  \n  // File hash IOCs - malware execution\n  if (iocType.includes('hash') || iocType.includes('md5') || iocType.includes('sha')) {\n    classifications.push({\n      tactic: 'Execution',\n      tactic_id: 'TA0002',\n      technique: 'User Execution',\n      technique_id: 'T1204',\n      sub_technique: 'Malicious File',\n      sub_technique_id: 'T1204.002'\n    });\n    \n    // Also add persistence if indicated\n    if (description.includes('persist') || tags.some(t => t.toLowerCase().includes('persist'))) {\n      classifications.push({\n        tactic: 'Persistence',\n        tactic_id: 'TA0003',\n        technique: 'Boot or Logon Autostart Execution',\n        technique_id: 'T1547'\n      });\n    }\n  }\n  \n  // Email address IOCs - phishing\n  if (iocType.includes('email')) {\n    classifications.push({\n      tactic: 'Initial Access',\n      tactic_id: 'TA0001',\n      technique: 'Phishing',\n      technique_id: 'T1566',\n      sub_technique: 'Spearphishing Attachment',\n      sub_technique_id: 'T1566.001'\n    });\n  }\n  \n  // Ransomware indicators\n  if (description.includes('ransom') || tags.some(t => t.toLowerCase().includes('ransom'))) {\n    classifications.push({\n      tactic: 'Impact',\n      tactic_id: 'TA0040',\n      technique: 'Data Encrypted for Impact',\n      technique_id: 'T1486'\n    });\n  }\n  \n  // Data exfiltration indicators\n  if (description.includes('exfil') || tags.some(t => t.toLowerCase().includes('exfil'))) {\n    classifications.push({\n      tactic: 'Exfiltration',\n      tactic_id: 'TA0010',\n      technique: 'Exfiltration Over C2 Channel',\n      technique_id: 'T1041'\n    });\n  }\n  \n  // Credential dumping/stealing\n  if (description.includes('credential') || description.includes('password') || tags.some(t => ['credential', 'password'].includes(t.toLowerCase()))) {\n    classifications.push({\n      tactic: 'Credential Access',\n      tactic_id: 'TA0006',\n      technique: 'OS Credential Dumping',\n      technique_id: 'T1003'\n    });\n  }\n  \n  // Lateral movement\n  if (description.includes('lateral') || tags.some(t => t.toLowerCase().includes('lateral'))) {\n    classifications.push({\n      tactic: 'Lateral Movement',\n      tactic_id: 'TA0008',\n      technique: 'Remote Services',\n      technique_id: 'T1021'\n    });\n  }\n  \n  return classifications;\n}\n\n// Apply MITRE ATT&CK classification\nconst mitreClassifications = classifyMitreAttack(item);\n\n// Return enriched item with MITRE ATT&CK data\nreturn {\n  json: {\n    ...item,\n    mitre_attack: {\n      classifications: mitreClassifications,\n      classification_count: mitreClassifications.length,\n      tactics: [...new Set(mitreClassifications.map(c => c.tactic))],\n      techniques: [...new Set(mitreClassifications.map(c => c.technique_id))]\n    }\n  }\n};"
+      },
+      "id": "dfcd4044-80df-4e3d-9a39-ecd3324fef53",
+      "name": "MITRE ATT&CK Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ingestion_timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "workflow_version",
+              "value": "1.0",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "confidence_score",
+              "value": 75,
+              "type": "number"
+            },
+            {
+              "id": "id-4",
+              "name": "tlp_level",
+              "value": "TLP:AMBER",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "41289a4a-24fc-4219-9786-5f75871030fe",
+      "name": "Add Metadata and Tags",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "preBuiltAgentsCalloutHttpRequest": "",
+        "httpVariantWarning": "",
+        "curlImport": "",
+        "method": "GET",
+        "": "",
+        "url": "",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openCtiApi",
+        "provideSslCertificates": false,
+        "sendQuery": false,
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {},
+        "infoMessage": ""
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1312,
+        384
+      ],
+      "id": "b87cb47b-2253-4684-8ce2-444b0aba173a",
+      "name": "OpenCTI HTTP Request",
+      "extendsCredential": "openCtiApi"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Fetch MISP IOCs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch AlienVault OTX IOCs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Abuse.ch Threat Feed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch RSS Threat Feeds",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Twitter Threat Intel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch MISP IOCs": {
+      "main": [
+        [
+          {
+            "node": "Parse MISP Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch AlienVault OTX IOCs": {
+      "main": [
+        [
+          {
+            "node": "Parse OTX Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Abuse.ch Threat Feed": {
+      "main": [
+        [
+          {
+            "node": "Parse Abuse.ch Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RSS Threat Feeds": {
+      "main": [
+        [
+          {
+            "node": "Parse RSS Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Twitter Threat Intel": {
+      "main": [
+        [
+          {
+            "node": "Parse Twitter Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse MISP Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All IOCs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OTX Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All IOCs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Abuse.ch Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All IOCs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Parse RSS Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All IOCs",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Parse Twitter Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All IOCs",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge All IOCs": {
+      "main": [
+        [
+          {
+            "node": "Normalize to STIX2 Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize to STIX2 Format": {
+      "main": [
+        [
+          {
+            "node": "MITRE ATT&CK Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MITRE ATT&CK Classification": {
+      "main": [
+        [
+          {
+            "node": "Add Metadata and Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Metadata and Tags": {
+      "main": [
+        [
+          {
+            "node": "OpenCTI HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "73569ad3-2307-4a29-a9b0-023d9cc2693a",
+  "meta": {
+    "instanceId": "031ae470f9626aa6dc374c7ebd6b20928ecb035a3964dcb3b10334967e75f7b2"
+  },
+  "id": "0i4bk7m6UWnojVSz",
+  "tags": [
+    {
+      "updatedAt": "2025-11-02T16:58:34.655Z",
+      "createdAt": "2025-11-02T16:58:34.655Z",
+      "id": "EG4ytuu5lTxxRu3W",
+      "name": "CTI"
+    }
+  ]
+}
